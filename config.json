@@ -1,0 +1,10 @@
+{
+    "server": {
+        "port": 8080
+    },
+    "database": {
+        "asn_db_path": "mmdb/GeoLite2-ASN.mmdb",
+        "city_db_path": "mmdb/GeoLite2-City.mmdb",
+        "geo_cn_db_path": "mmdb/GeoCN.mmdb"
+    }
+}
