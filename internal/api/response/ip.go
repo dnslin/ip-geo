@@ -22,9 +22,8 @@ type IPResponse struct {
 			Name string `json:"name"`
 		} `json:"continent"`
 		Country struct {
-			Code      string `json:"code"`
-			Name      string `json:"name"`
-			GeonameID uint32 `json:"geoname_id,omitempty"`
+			Code string `json:"code"`
+			Name string `json:"name"`
 		} `json:"country"`
 		Region   Region `json:"region"`
 		City     City   `json:"city,omitempty"`
@@ -43,13 +42,11 @@ type IPResponse struct {
 
 // Region 表示地区信息
 type Region struct {
-	Code      string `json:"code"`
-	Name      string `json:"name"`
-	GeonameID uint32 `json:"geoname_id,omitempty"`
+	Code string `json:"code"`
+	Name string `json:"name"`
 }
 
 // City 表示城市信息
 type City struct {
-	Name      string `json:"name"`
-	GeonameID uint32 `json:"geoname_id,omitempty"`
+	Name string `json:"name"`
 }

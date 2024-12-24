@@ -32,9 +32,13 @@ func main() {
 
 	// 注册路由处理器
 	ipHandler := handler.NewIPHandler()
-	// 简化路由
-	mux.HandleFunc("GET /ip", ipHandler.HandleCurrentIP)      // 获取当前IP
-	mux.HandleFunc("GET /ip/{ip}", ipHandler.HandleQueryIP)   // 查询指定IP
+	// 注册当前IP查询路由
+	mux.HandleFunc("GET /ip", ipHandler.HandleCurrentIP)     // GET请求处理
+	mux.HandleFunc("OPTIONS /ip", ipHandler.HandleCurrentIP) // OPTIONS请求处理
+
+	// 注册指定IP查询路由
+	mux.HandleFunc("GET /ip/{ip}", ipHandler.HandleQueryIP)     // GET请求处理
+	mux.HandleFunc("OPTIONS /ip/{ip}", ipHandler.HandleQueryIP) // OPTIONS请求处理
 
 	// 启动服务器
 	addr := ":8080"

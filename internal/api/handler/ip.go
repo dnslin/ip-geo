@@ -2,8 +2,8 @@ package handler
 
 import (
 	"encoding/json"
-	"net/http"
 	"net"
+	"net/http"
 	"strings"
 
 	"ip-geo/internal/logger"
@@ -24,6 +24,14 @@ func NewIPHandler() *IPHandler {
 
 // HandleCurrentIP 处理当前IP查询请求
 func (h *IPHandler) HandleCurrentIP(w http.ResponseWriter, r *http.Request) {
+	// 添加CORS头
+	h.setCORSHeaders(w)
+
+	// 处理预检请求
+	if r.Method == "OPTIONS" {
+		return
+	}
+
 	// 按优先级获取真实IP
 	ip := h.getRealIPFromRequest(r)
 	logger.Debug("获取到客户端IP: %s", ip)
@@ -62,8 +70,24 @@ func (h *IPHandler) getRealIPFromRequest(r *http.Request) string {
 
 // HandleQueryIP 处理指定IP查询请求
 func (h *IPHandler) HandleQueryIP(w http.ResponseWriter, r *http.Request) {
+	// 添加CORS头
+	h.setCORSHeaders(w)
+
+	// 处理预检请求
+	if r.Method == "OPTIONS" {
+		return
+	}
+
 	ip := r.PathValue("ip")
 	h.handleIPLookup(w, ip)
+}
+
+// setCORSHeaders 设置CORS响应头
+func (h *IPHandler) setCORSHeaders(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Real-IP, X-Forwarded-For")
+	w.Header().Set("Access-Control-Max-Age", "3600")
 }
 
 // handleIPLookup 处理IP查询

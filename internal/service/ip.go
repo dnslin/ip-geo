@@ -159,8 +159,8 @@ func (s *IPService) lookupGeoCN(ip net.IP, resp *response.IPResponse) error {
 			Longitude      float64 `maxminddb:"longitude"`
 		} `maxminddb:"location"`
 		Continent struct {
-			Code      string            `maxminddb:"code"`
-			Names     map[string]string `maxminddb:"names"`
+			Code  string            `maxminddb:"code"`
+			Names map[string]string `maxminddb:"names"`
 		} `maxminddb:"continent"`
 	}
 
@@ -175,10 +175,10 @@ func (s *IPService) lookupGeoCN(ip net.IP, resp *response.IPResponse) error {
 			resp.Location.Continent.Code = cityRecord.Continent.Code
 			resp.Location.Continent.Name = getLocalizedName(cityRecord.Continent.Names, "zh-CN", "en")
 		}
-		
-		logger.Debug("从GeoIP2补充位置信息 - 经度: %f, 纬度: %f, 精度: %d", 
-			cityRecord.Location.Longitude, 
-			cityRecord.Location.Latitude, 
+
+		logger.Debug("从GeoIP2补充位置信息 - 经度: %f, 纬度: %f, 精度: %d",
+			cityRecord.Location.Longitude,
+			cityRecord.Location.Latitude,
 			cityRecord.Location.AccuracyRadius)
 	} else {
 		logger.Debug("从GeoIP2补充位置信息失败: %v", err)
@@ -241,8 +241,7 @@ func (s *IPService) lookupGeoIP2(ip net.IP, resp *response.IPResponse) error {
 		logger.Debug("检测到Anycast IP: %s", ip)
 		resp.Location.Country.Code = record.RegisteredCountry.ISOCode
 		resp.Location.Country.Name = getLocalizedName(record.RegisteredCountry.Names, "zh-CN", "en")
-		resp.Location.Country.GeonameID = record.RegisteredCountry.GeonameID
-		
+
 		// Anycast IP通常不设置具体的地区和城市信息
 		return nil
 	}
@@ -251,24 +250,21 @@ func (s *IPService) lookupGeoIP2(ip net.IP, resp *response.IPResponse) error {
 	if record.Country.ISOCode != "" {
 		resp.Location.Country.Code = record.Country.ISOCode
 		resp.Location.Country.Name = getLocalizedName(record.Country.Names, "zh-CN", "en")
-		resp.Location.Country.GeonameID = record.Country.GeonameID
 	}
 
 	// 设置地区信息
 	if len(record.Subdivisions) > 0 {
 		subdivision := record.Subdivisions[0]
 		resp.Location.Region = response.Region{
-			Code:      subdivision.ISOCode,
-			Name:      getLocalizedName(subdivision.Names, "zh-CN", "en"),
-			GeonameID: subdivision.GeonameID,
+			Code: subdivision.ISOCode,
+			Name: getLocalizedName(subdivision.Names, "zh-CN", "en"),
 		}
 	}
 
 	// 设置城市信息
 	if cityName := getLocalizedName(record.City.Names, "zh-CN", "en"); cityName != "" {
 		resp.Location.City = response.City{
-			Name:      cityName,
-			GeonameID: record.City.GeonameID,
+			Name: cityName,
 		}
 	}
 
@@ -406,17 +402,17 @@ func determineRegionType(region string) string {
 			return "province"
 		}
 	}
-	
+
 	// 检查是否是城市
 	if strings.HasSuffix(region, "市") {
 		return "city"
 	}
-	
+
 	// 检查是否是区县
 	if strings.HasSuffix(region, "区") || strings.HasSuffix(region, "县") {
 		return "district"
 	}
-	
+
 	return "unknown"
 }
 
@@ -424,8 +420,8 @@ func determineRegionType(region string) string {
 func getRegionCode(subdivisions []struct {
 	ISOCode    string            `maxminddb:"iso_code"`
 	Names      map[string]string `maxminddb:"names"`
-	GeoNameID  uint             `maxminddb:"geoname_id"`   // 添加新字��
-	Confidence int              `maxminddb:"confidence"`    // 添加新字段
+	GeoNameID  uint              `maxminddb:"geoname_id"`
+	Confidence int               `maxminddb:"confidence"`
 }) string {
 	if len(subdivisions) > 0 && subdivisions[0].ISOCode != "" {
 		return subdivisions[0].ISOCode
