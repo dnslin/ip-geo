@@ -5,10 +5,16 @@ import (
 
 	"ip-geo/internal/api/handler"
 	"ip-geo/internal/database"
+	"ip-geo/internal/downloader"
 	"ip-geo/internal/logger"
 )
 
 func main() {
+	// 确保MMDB文件存在
+	if err := downloader.EnsureMMDBFiles(); err != nil {
+		logger.Fatal("确保MMDB文件存在失败: %v", err)
+	}
+
 	// 初始化数据库
 	if err := database.InitializeDB(); err != nil {
 		logger.Fatal("初始化数据库失败: %v", err)
@@ -26,8 +32,9 @@ func main() {
 
 	// 注册路由处理器
 	ipHandler := handler.NewIPHandler()
-	mux.HandleFunc("GET /api/ip/current", ipHandler.HandleCurrentIP)
-	mux.HandleFunc("GET /api/ip/query/{ip}", ipHandler.HandleQueryIP)
+	// 简化路由
+	mux.HandleFunc("GET /ip", ipHandler.HandleCurrentIP)      // 获取当前IP
+	mux.HandleFunc("GET /ip/{ip}", ipHandler.HandleQueryIP)   // 查询指定IP
 
 	// 启动服务器
 	addr := ":8080"

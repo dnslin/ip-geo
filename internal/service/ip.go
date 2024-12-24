@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"math"
 	"net"
 	"strings"
@@ -75,118 +76,108 @@ func (s *IPService) LookupIP(ip string) (*response.IPResponse, error) {
 
 	// 首先尝试从GeoCN数据库获取中国地区的详细信息
 	var geoCNRecord struct {
-		Country struct {
-			ISOCode string            `maxminddb:"iso_code"`
-			Names   map[string]string `maxminddb:"names"`
-		} `maxminddb:"country"`
-		Province  string `maxminddb:"province"`  // 省份
-		City      string `maxminddb:"city"`      // 城市
-		Districts string `maxminddb:"districts"` // 区县
-		ISP       string `maxminddb:"isp"`       // ISP信息
-		Net       string `maxminddb:"net"`       // 网络类型
-		Location  struct {
-			Latitude  float64 `maxminddb:"latitude"`
-			Longitude float64 `maxminddb:"longitude"`
-		} `maxminddb:"location"`
+		Province      string `maxminddb:"province"`
+		ProvinceCode  uint64 `maxminddb:"provinceCode"`
+		City          string `maxminddb:"city"`
+		CityCode      uint64 `maxminddb:"cityCode"`
+		Districts     string `maxminddb:"districts"`
+		DistrictsCode uint64 `maxminddb:"districtsCode"`
+		ISP           string `maxminddb:"isp"`
+		Net           string `maxminddb:"net"`
 	}
 
-	isChineseIP := false
-	if err := s.db.GeoCNDB.Lookup(parsedIP, &geoCNRecord); err == nil && geoCNRecord.Country.ISOCode == "CN" {
+	// 先尝试从GeoCN数据库查询
+	err := s.db.GeoCNDB.Lookup(parsedIP, &geoCNRecord)
+
+	// // 清理字符串字段
+	// geoCNRecord.Province = strings.TrimSpace(geoCNRecord.Province)
+	// geoCNRecord.City = strings.TrimSpace(geoCNRecord.City)
+	// geoCNRecord.Districts = strings.TrimSpace(geoCNRecord.Districts)
+	// geoCNRecord.ISP = strings.TrimSpace(geoCNRecord.ISP)
+	// geoCNRecord.Net = strings.TrimSpace(geoCNRecord.Net)
+
+	// logger.Debug("GeoCN完整结构: %+v", geoCNRecord)
+	// logger.Debug("GeoCN查询错误: %v", err)
+	logger.Debug("resp.Network.CIDR: %s", resp.Network.CIDR)
+	// 如果网络信息为空，根据IP类型设置默认网段
+	if resp.Network.CIDR == "" {
+		var ipNet net.IPNet
+		if parsedIP.To4() != nil {
+			// IPv4 使用 /24 网段
+			ipNet = net.IPNet{
+				IP:   parsedIP.Mask(net.CIDRMask(24, 32)), // 将IP掩码为/24
+				Mask: net.CIDRMask(24, 32),
+			}
+		} else {
+			// IPv6 使用 /64 网段
+			ipNet = net.IPNet{
+				IP:   parsedIP.Mask(net.CIDRMask(64, 128)), // 将IP掩码为/64
+				Mask: net.CIDRMask(64, 128),
+			}
+		}
+		
+		resp.Network.CIDR = ipNet.String()
+		startIP, endIP := calculateNetworkRange(ipNet)
+		resp.Network.StartIP = startIP.String()
+		resp.Network.EndIP = endIP.String()
+		resp.Network.TotalIPs = calculateTotalIPs(ipNet)
+		logger.Debug("使用默认网段: %s (总IP数: %d)", resp.Network.CIDR, resp.Network.TotalIPs)
+	}
+	// 通过检查Province或ISP字段来判断是否为中国IP
+	if err == nil && (geoCNRecord.Province != "" || geoCNRecord.ISP != "") {
 		logger.Info("从GeoCN数据库获取到中国IP信息")
-		isChineseIP = true
+		
 		// 设置国家信息
 		resp.Location.Country.Code = "CN"
 		resp.Location.Country.Name = "中国"
 		resp.Location.Timezone = "Asia/Shanghai"
 
-		// 设置经纬度
-		if geoCNRecord.Location.Latitude != 0 || geoCNRecord.Location.Longitude != 0 {
-			resp.Location.Coordinates.Latitude = geoCNRecord.Location.Latitude
-			resp.Location.Coordinates.Longitude = geoCNRecord.Location.Longitude
+		// 处理地区信息
+		regions := []string{geoCNRecord.Province, geoCNRecord.City, geoCNRecord.Districts}
+		regions = removeEmpty(regions) // 只需要移除空值，不需要去重
+
+		// 记录日志以便调试
+		logger.Debug("原始地区信息: Province=%s, City=%s, Districts=%s", 
+			geoCNRecord.Province, geoCNRecord.City, geoCNRecord.Districts)
+		logger.Debug("处理后的地区信息: %v", regions)
+
+		// 构建完整地址名称和最后一级代码
+		fullName := strings.Join(regions, "")
+		var lastCode string
+		if geoCNRecord.Districts != "" {
+			lastCode = fmt.Sprintf("%d", geoCNRecord.DistrictsCode)
+		} else if geoCNRecord.City != "" {
+			lastCode = fmt.Sprintf("%d", geoCNRecord.CityCode)
+		} else if geoCNRecord.Province != "" {
+			lastCode = fmt.Sprintf("%d", geoCNRecord.ProvinceCode)
 		}
 
-		// 设置ISP和网络类型信息
+		// 设置地区信息
+		resp.Location.Region = response.Region{
+			Code: lastCode,
+			Name: fullName,
+		}
+
+		// 设置ISP信息
 		if geoCNRecord.ISP != "" {
 			resp.ISP.Name = geoCNRecord.ISP
-			resp.ASN.Info = geoCNRecord.ISP
+			resp.ASN.Info = geoCNRecord.ISP  // 同时更新ASN信息
 		}
 		if geoCNRecord.Net != "" {
 			resp.Network.Type = geoCNRecord.Net
 		}
 
-		// 处理地区信息（省市区）
-		regions := []string{geoCNRecord.Province, geoCNRecord.City, geoCNRecord.Districts}
-		regions = removeDuplicates(removeEmpty(regions)) // 去重和移除空值
-
-		for i, region := range regions {
-			var regionType string
-			var regionName string
-
-			switch i {
-			case 0: // 省份
-				regionType = "province"
-				// 检查是否是特别行政区
-				isSpecialRegion := false
-				for _, special := range asn.SpecialRegions {
-					if strings.Contains(region, special) {
-						isSpecialRegion = true
-						regionName = special
-						break
-					}
-				}
-				if !isSpecialRegion {
-					// 尝试从省份映射中获取标准名称
-					for shortName, fullName := range asn.ProvinceMap {
-						if strings.Contains(region, shortName) {
-							regionName = fullName
-							break
-						}
-					}
-				}
-				if regionName == "" {
-					regionName = region
-				}
-			case 1: // 城市
-				regionType = "city"
-				if !strings.HasSuffix(region, "市") {
-					regionName = region + "市"
-				} else {
-					regionName = region
-				}
-			case 2: // 区县
-				regionType = "district"
-				if !strings.HasSuffix(region, "区") && !strings.HasSuffix(region, "县") {
-					regionName = region + "区"
-				} else {
-					regionName = region
-				}
-			}
-
-			if regionName != "" {
-				resp.Location.Regions = append(resp.Location.Regions, struct {
-					Code string `json:"code"`
-					Name string `json:"name"`
-					Type string `json:"type"`
-				}{
-					Code: "",
-					Name: regionName,
-					Type: regionType,
-				})
-			}
-		}
-	} else if err != nil {
-		logger.Warn("查询GeoCN数据库失败: %v", err)
-	}
-
-	// 如果不是中国IP或者GeoCN数据库没有信息，则使用GeoLite2-City数据库
-	if !isChineseIP {
+		return resp, nil
+	} else {
+		logger.Info("未进入中国IP分支的原因: err=%v, Province=[%s], ISP=[%s]", 
+			err, geoCNRecord.Province, geoCNRecord.ISP)
+		// 如果不是中国IP或者GeoCN数据库查询失败则使用GeoLite2-City数据库
 		logger.Info("使用GeoLite2-City数据库查询非中国IP信息")
 		var cityRecord struct {
 			Country struct {
 				ISOCode string            `maxminddb:"iso_code"`
 				Names   map[string]string `maxminddb:"names"`
 			} `maxminddb:"country"`
-
 			City struct {
 				Names     map[string]string `maxminddb:"names"`
 				Latitude  float64           `maxminddb:"latitude"`
@@ -207,38 +198,28 @@ func (s *IPService) LookupIP(ip string) (*response.IPResponse, error) {
 			resp.Location.Country.Code = cityRecord.Country.ISOCode
 			resp.Location.Country.Name = getLocalizedName(cityRecord.Country.Names, "zh-CN", "en")
 
-			// 设置地区信息
+			// 收集所有地区名称
+			var regions []string
+
+			// 添加省份/州信息
 			for _, subdivision := range cityRecord.Subdivisions {
-				resp.Location.Regions = append(resp.Location.Regions, struct {
-					Code string `json:"code"`
-					Name string `json:"name"`
-					Type string `json:"type"`
-				}{
-					Code: subdivision.ISOCode,
-					Name: getLocalizedName(subdivision.Names, "zh-CN", "en"),
-					Type: "province",
-				})
+				regions = append(regions, getLocalizedName(subdivision.Names, "zh-CN", "en"))
 			}
 
-			// 设置城市信息
+			// 添加城市信息
 			cityName := getLocalizedName(cityRecord.City.Names, "zh-CN", "en")
 			if cityName != "" {
-				resp.Location.Regions = append(resp.Location.Regions, struct {
-					Code string `json:"code"`
-					Name string `json:"name"`
-					Type string `json:"type"`
-				}{
-					Code: "",
-					Name: cityName,
-					Type: "city",
-				})
+				regions = append(regions, cityName)
+			}
+
+			// 设置地区信息
+			resp.Location.Region = response.Region{
+				Code: getRegionCode(cityRecord.Subdivisions),
+				Name: strings.Join(regions, ""),
 			}
 
 			// 设置经纬度和时区
-			resp.Location.Coordinates.Latitude = cityRecord.City.Latitude
-			resp.Location.Coordinates.Longitude = cityRecord.City.Longitude
 			resp.Location.Timezone = cityRecord.Location.TimeZone
-
 			// 如果ASN查询没有获取到网络信息，使用城市数据库的网络信息
 			if resp.Network.CIDR == "" && cityRecord.Network.IP != nil && cityRecord.Network.Mask != nil {
 				resp.Network.CIDR = cityRecord.Network.String()
@@ -246,17 +227,12 @@ func (s *IPService) LookupIP(ip string) (*response.IPResponse, error) {
 				resp.Network.StartIP = startIP.String()
 				resp.Network.EndIP = endIP.String()
 				resp.Network.TotalIPs = calculateTotalIPs(cityRecord.Network)
+				logger.Debug("从City数据库获取网络信息: %s (总IP数: %d)", resp.Network.CIDR, resp.Network.TotalIPs)
 			}
 		} else {
 			logger.Warn("查询City数据库失败: %v", err)
 		}
 	}
-
-	// 设置网络类型
-	if resp.Network.Type == "" {
-		resp.Network.Type = "宽带" // 默认网络类型
-	}
-
 	logger.Info("IP查询完成: %s", ip)
 	return resp, nil
 }
@@ -297,12 +273,18 @@ func getLocalizedName(names map[string]string, primaryLang, fallbackLang string)
 
 // 计算网段的起始和结束IP
 func calculateNetworkRange(network net.IPNet) (net.IP, net.IP) {
-	startIP := network.IP.Mask(network.Mask)
-	endIP := make(net.IP, len(startIP))
+	// 计算起始IP
+	startIP := make(net.IP, len(network.IP))
+	copy(startIP, network.IP)
+	startIP = startIP.Mask(network.Mask)
+
+	// 计算结束IP
+	endIP := make(net.IP, len(network.IP))
 	copy(endIP, startIP)
 	for i := range endIP {
 		endIP[i] |= ^network.Mask[i]
 	}
+
 	return startIP, endIP
 }
 
@@ -337,4 +319,37 @@ func removeDuplicates(arr []string) []string {
 		}
 	}
 	return result
+}
+
+// 添加这个辅助函数来确定地区类型
+func determineRegionType(region string) string {
+	// 检查是否是省级行政区
+	for _, province := range asn.Provinces {
+		if strings.Contains(region, province) {
+			return "province"
+		}
+	}
+	
+	// 检查是否是城市
+	if strings.HasSuffix(region, "市") {
+		return "city"
+	}
+	
+	// 检查是否是区县
+	if strings.HasSuffix(region, "区") || strings.HasSuffix(region, "县") {
+		return "district"
+	}
+	
+	return "unknown"
+}
+
+// getRegionCode 获取地区代码，支持中国和国际区域代码
+func getRegionCode(subdivisions []struct {
+	ISOCode string            `maxminddb:"iso_code"`
+	Names   map[string]string `maxminddb:"names"`
+}) string {
+	if len(subdivisions) > 0 && subdivisions[0].ISOCode != "" {
+		return subdivisions[0].ISOCode
+	}
+	return ""
 }
