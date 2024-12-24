@@ -32,7 +32,7 @@ func GetInstance() *Config {
 		instance = &Config{
 			// 默认配置
 			ASNDB:   "mmdb/GeoLite2-ASN.mmdb",
-			CityDB:  "mmdb/GeoLite2-City.mmdb",
+			CityDB:  "mmdb/GeoIP2-City.mmdb",
 			GeoCNDB: "mmdb/GeoCN.mmdb",
 			Server: struct {
 				Port int `json:"port"`

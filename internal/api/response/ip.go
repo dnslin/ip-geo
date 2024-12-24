@@ -17,12 +17,23 @@ type IPResponse struct {
 		Type     string `json:"type"`
 	} `json:"network"`
 	Location struct {
-		Country struct {
+		Continent struct {
 			Code string `json:"code"`
 			Name string `json:"name"`
+		} `json:"continent"`
+		Country struct {
+			Code      string `json:"code"`
+			Name      string `json:"name"`
+			GeonameID uint32 `json:"geoname_id,omitempty"`
 		} `json:"country"`
 		Region   Region `json:"region"`
-		Timezone string `json:"timezone"`
+		City     City   `json:"city,omitempty"`
+		Location struct {
+			Latitude       float64 `json:"latitude,omitempty"`
+			Longitude      float64 `json:"longitude,omitempty"`
+			AccuracyRadius uint16  `json:"accuracy_radius,omitempty"`
+			TimeZone       string  `json:"timezone,omitempty"`
+		} `json:"location"`
 	} `json:"location"`
 	ISP struct {
 		Name string `json:"name"`
@@ -32,6 +43,13 @@ type IPResponse struct {
 
 // Region 表示地区信息
 type Region struct {
-	Code string `json:"code"`
-	Name string `json:"name"`
+	Code      string `json:"code"`
+	Name      string `json:"name"`
+	GeonameID uint32 `json:"geoname_id,omitempty"`
+}
+
+// City 表示城市信息
+type City struct {
+	Name      string `json:"name"`
+	GeonameID uint32 `json:"geoname_id,omitempty"`
 }

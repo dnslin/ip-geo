@@ -12,7 +12,7 @@ import (
 )
 
 var mmdbFiles = map[string]string{
-	"mmdb/GeoLite2-City.mmdb": "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb",
+	"mmdb/GeoIP2-City.mmdb":   "https://pan.dnslin.com/d/pan/GeoIP2-City.mmdb",
 	"mmdb/GeoLite2-ASN.mmdb":  "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-ASN.mmdb",
 	"mmdb/GeoCN.mmdb":         "http://github.com/ljxi/GeoCN/releases/download/Latest/GeoCN.mmdb",
 }
