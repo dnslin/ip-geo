@@ -7,6 +7,7 @@ import (
 	"ip-geo/internal/database"
 	"ip-geo/internal/downloader"
 	"ip-geo/internal/logger"
+	"ip-geo/internal/middleware"
 )
 
 func main() {
@@ -32,18 +33,25 @@ func main() {
 
 	// 注册路由处理器
 	ipHandler := handler.NewIPHandler()
+
+	// 包装所有处理器以支持CORS
+	corsHandler := middleware.CORS(mux)
+
 	// 注册当前IP查询路由
-	mux.HandleFunc("GET /ip", ipHandler.HandleCurrentIP)     // GET请求处理
-	mux.HandleFunc("OPTIONS /ip", ipHandler.HandleCurrentIP) // OPTIONS请求处理
+	mux.HandleFunc("GET /", ipHandler.HandleCurrentIP)
+	mux.HandleFunc("OPTIONS /", ipHandler.HandleCurrentIP)
+	// 注册当前IP查询路由
+	mux.HandleFunc("GET /ip", ipHandler.HandleCurrentIP)
+	mux.HandleFunc("OPTIONS /ip", ipHandler.HandleCurrentIP)
 
 	// 注册指定IP查询路由
-	mux.HandleFunc("GET /ip/{ip}", ipHandler.HandleQueryIP)     // GET请求处理
-	mux.HandleFunc("OPTIONS /ip/{ip}", ipHandler.HandleQueryIP) // OPTIONS请求处理
+	mux.HandleFunc("GET /ip/{ip}", ipHandler.HandleQueryIP)
+	mux.HandleFunc("OPTIONS /ip/{ip}", ipHandler.HandleQueryIP)
 
-	// 启动服务器
+	// 启动服务器时使用 corsHandler 而不是 mux
 	addr := ":8080"
 	logger.Info("服务器启动在 %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, corsHandler); err != nil {
 		logger.Fatal("服务器启动失败: %v", err)
 	}
 }
