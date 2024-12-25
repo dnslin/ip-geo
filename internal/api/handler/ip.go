@@ -40,13 +40,19 @@ func (h *IPHandler) HandleCurrentIP(w http.ResponseWriter, r *http.Request) {
 
 // getRealIPFromRequest 按优先级从请求中获取真实IP地址
 func (h *IPHandler) getRealIPFromRequest(r *http.Request) string {
-	// 1. 从X-Real-IP获取
+	// 1. 从Cloudflare的CF-Connecting-IP获取
+	if ip := r.Header.Get("CF-Connecting-IP"); ip != "" {
+		logger.Debug("从CF-Connecting-IP获取到IP: %s", ip)
+		return ip
+	}
+
+	// 2. 从X-Real-IP获取
 	if ip := r.Header.Get("X-Real-IP"); ip != "" {
 		logger.Debug("从X-Real-IP获取到IP: %s", ip)
 		return ip
 	}
 
-	// 2. 从X-Forwarded-For获取第一个IP
+	// 3. 从X-Forwarded-For获取第一个IP
 	if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
 		ips := strings.Split(forwardedFor, ",")
 		if len(ips) > 0 {
@@ -56,7 +62,7 @@ func (h *IPHandler) getRealIPFromRequest(r *http.Request) string {
 		}
 	}
 
-	// 3. 从RemoteAddr获取
+	// 4. 从RemoteAddr获取
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		// 如果分割失败,说明可能没有端口号,直接使用完整地址
@@ -86,7 +92,7 @@ func (h *IPHandler) HandleQueryIP(w http.ResponseWriter, r *http.Request) {
 func (h *IPHandler) setCORSHeaders(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Real-IP, X-Forwarded-For")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Real-IP, X-Forwarded-For, CF-Connecting-IP")
 	w.Header().Set("Access-Control-Max-Age", "3600")
 }
 
